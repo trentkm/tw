@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -105,6 +106,10 @@ func main() {
 			var agents []agentInfo
 
 			var working, waiting, done int
+			// Cycle working symbol based on current second
+			workSymbols := []string{"░", "▒", "▓", "█", "▓", "▒", "░", " "}
+			workSym := workSymbols[time.Now().Second()%len(workSymbols)]
+
 			for _, s := range sessions {
 				wins, _ := tmux.ListWindowsWithPanes(s.Name)
 				_, agentStatus := tmux.SessionAgentStatus(wins)
@@ -113,7 +118,7 @@ func main() {
 				switch {
 				case agentStatus == tmux.AgentWorking:
 					working++
-					agents = append(agents, agentInfo{s.Name, "⟳", "#5f87af"})
+					agents = append(agents, agentInfo{s.Name, workSym, "#5f87af"})
 				case n != nil && n.Status == notify.StatusWaiting:
 					waiting++
 					agents = append(agents, agentInfo{s.Name, "●", "#e5a84b"})
@@ -131,7 +136,7 @@ func main() {
 			if len(agents) > 4 {
 				var parts []string
 				if working > 0 {
-					parts = append(parts, fmt.Sprintf("#[fg=#5f87af]%d⟳#[default]", working))
+					parts = append(parts, fmt.Sprintf("#[fg=#5f87af]%d%s#[default]", working, workSym))
 				}
 				if waiting > 0 {
 					parts = append(parts, fmt.Sprintf("#[fg=#e5a84b,bold]%d●#[default]", waiting))

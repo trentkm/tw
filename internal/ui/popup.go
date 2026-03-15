@@ -105,13 +105,21 @@ type Model struct {
 	cmdBuf         string
 	searchMode     bool
 	searchBuf      string
+	animFrame      int // animation frame counter
 }
 
 type tickMsg time.Time
+type animMsg time.Time
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
+	})
+}
+
+func animCmd() tea.Cmd {
+	return tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
+		return animMsg(t)
 	})
 }
 
@@ -192,8 +200,11 @@ func classifyEntry(e *sessionEntry) {
 	e.simple = agentCount <= 1
 }
 
+// Animation frames — block density pulse
+var pulseFrames = []string{"░", "▒", "▓", "█", "▓", "▒", "░", " "}
+
 func (m Model) Init() tea.Cmd {
-	return tickCmd()
+	return tea.Batch(tickCmd(), animCmd())
 }
 
 // ── Update ───────────────────────────────────────────────────────────
@@ -223,6 +234,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.SetContent(m.renderSessions())
 		}
 		return m, tickCmd()
+
+	case animMsg:
+		m.animFrame = (m.animFrame + 1) % len(pulseFrames)
+		if m.ready {
+			m.viewport.SetContent(m.renderSessions())
+		}
+		return m, animCmd()
 
 	case tea.KeyMsg:
 		// ── Command mode (:q) ──
@@ -428,7 +446,7 @@ func (m Model) renderEntry(entry sessionEntry, isCursor, isCurrent bool, w int) 
 	var b strings.Builder
 
 	name := entry.session.Name
-	badge := statusBadge(entry)
+	badge := m.statusBadge(entry)
 
 	// ── Line 1: [marker] name [badge] ──
 	var marker string
@@ -481,9 +499,10 @@ func (m Model) renderEntry(entry sessionEntry, isCursor, isCurrent bool, w int) 
 		panePath := tildefy(p.Path)
 		_, paneStatus := tmux.DetectAgent(p)
 		var indicator string
+		frame := pulseFrames[m.animFrame%len(pulseFrames)]
 		switch paneStatus {
 		case tmux.AgentWorking:
-			indicator = workingStyle.Render("⟳ ") + pathStyle.Render(friendlyName(p))
+			indicator = workingStyle.Render(frame+" ") + pathStyle.Render(friendlyName(p))
 		default:
 			indicator = pathStyle.Render(friendlyName(p))
 		}
@@ -494,9 +513,10 @@ func (m Model) renderEntry(entry sessionEntry, isCursor, isCurrent bool, w int) 
 			panePath := tildefy(ap.pane.Path)
 			_, paneStatus := tmux.DetectAgent(ap.pane)
 			var indicator string
+			frame := pulseFrames[m.animFrame%len(pulseFrames)]
 			switch paneStatus {
 			case tmux.AgentWorking:
-				indicator = workingStyle.Render("⟳") + pathStyle.Render(" "+friendlyName(ap.pane)+"  "+panePath)
+				indicator = workingStyle.Render(frame) + pathStyle.Render(" "+friendlyName(ap.pane)+"  "+panePath)
 			case tmux.AgentIdle:
 				indicator = pathStyle.Render("· "+friendlyName(ap.pane)+"  "+panePath)
 			default:
@@ -516,11 +536,10 @@ func (m Model) renderEntry(entry sessionEntry, isCursor, isCurrent bool, w int) 
 
 // ── Status badges ───────────────────────────────────────────────────
 
-func statusBadge(entry sessionEntry) string {
-	// Working always wins — if the agent has a spinner, you already
-	// responded to any "waiting" and any "done" is stale.
+func (m Model) statusBadge(entry sessionEntry) string {
 	if entry.agentStatus == tmux.AgentWorking {
-		return workingStyle.Render("⟳ working")
+		frame := pulseFrames[m.animFrame%len(pulseFrames)]
+		return workingStyle.Render(frame + " working")
 	}
 	if entry.notif != nil {
 		ago := entry.notif.TimeAgo()
@@ -554,7 +573,8 @@ func (m Model) agentSummary() string {
 		parts = append(parts, waitingStyle.Render(fmt.Sprintf("● %d waiting", waiting)))
 	}
 	if working > 0 {
-		parts = append(parts, workingStyle.Render(fmt.Sprintf("⟳ %d working", working)))
+		frame := pulseFrames[m.animFrame%len(pulseFrames)]
+		parts = append(parts, workingStyle.Render(fmt.Sprintf("%s %d working", frame, working)))
 	}
 	if done > 0 {
 		parts = append(parts, doneStyle.Render(fmt.Sprintf("✓ %d done", done)))
