@@ -19,13 +19,12 @@ func main() {
 		Long:  "A workspace manager for tmux with notifications and a visual sidebar.",
 	}
 
-	// tw sidebar
-	sidebarCmd := &cobra.Command{
-		Use:   "sidebar",
-		Short: "Open the interactive workspace sidebar",
+	// tw popup — run the TUI directly (called by display-popup)
+	popupCmd := &cobra.Command{
+		Use:    "popup",
+		Short:  "Open the workspace switcher TUI",
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Tag this pane so tw toggle can find it
-			tmux.Run("select-pane", "-T", sidebarTitle)
 			m := ui.NewModel()
 			p := tea.NewProgram(m, tea.WithAltScreen())
 			_, err := p.Run()
@@ -33,11 +32,23 @@ func main() {
 		},
 	}
 
-	// tw notify
+	// tw toggle — open or dismiss the popup
+	toggleCmd := &cobra.Command{
+		Use:   "toggle",
+		Short: "Toggle the workspace switcher popup",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			width, _ := cmd.Flags().GetString("width")
+			height, _ := cmd.Flags().GetString("height")
+			return togglePopup(width, height)
+		},
+	}
+	toggleCmd.Flags().StringP("width", "w", "50%", "Popup width (columns or percentage)")
+	toggleCmd.Flags().StringP("height", "H", "60%", "Popup height (rows or percentage)")
+
+	// tw notify --status waiting|done
 	notifyCmd := &cobra.Command{
-		Use:   "notify [message]",
+		Use:   "notify",
 		Short: "Send a notification for the current tmux session",
-		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			session, _ := cmd.Flags().GetString("session")
 			if session == "" {
@@ -46,11 +57,17 @@ func main() {
 					session = "default"
 				}
 			}
-			message := strings.Join(args, " ")
-			return notify.Add(session, message)
+			status, _ := cmd.Flags().GetString("status")
+			switch status {
+			case "waiting", "done":
+				return notify.Add(session, notify.Status(status))
+			default:
+				return fmt.Errorf("--status must be 'waiting' or 'done'")
+			}
 		},
 	}
 	notifyCmd.Flags().StringP("session", "s", "", "Session name (default: current tmux session)")
+	notifyCmd.Flags().String("status", "", "Notification status: waiting or done")
 
 	// tw clear
 	clearCmd := &cobra.Command{
@@ -78,67 +95,56 @@ func main() {
 		Use:   "status",
 		Short: "Status bar widget (for tmux status-right)",
 		Run: func(cmd *cobra.Command, args []string) {
-			count := notify.Count()
-			if count > 0 {
-				fmt.Printf("#[fg=yellow,bold] ● %d waiting #[default]", count)
+			waiting := notify.CountByStatus(notify.StatusWaiting)
+			done := notify.CountByStatus(notify.StatusDone)
+			if waiting > 0 {
+				fmt.Printf("#[fg=yellow,bold] ● %d agent waiting #[default]", waiting)
+			} else if done > 0 {
+				fmt.Printf("#[fg=green] ✓ %d agent done #[default]", done)
 			}
 		},
 	}
 
-	// tw toggle
-	toggleCmd := &cobra.Command{
-		Use:   "toggle",
-		Short: "Toggle the workspace sidebar in tmux",
+	// tw switch <session> — switch to a session (works from outside tmux)
+	switchCmd := &cobra.Command{
+		Use:    "switch [session]",
+		Short:  "Switch to a tmux session",
+		Args:   cobra.ExactArgs(1),
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			width, _ := cmd.Flags().GetInt("width")
-			return toggleSidebar(width)
+			session := args[0]
+			// Find the most recent client and switch it
+			clients, err := tmux.Run("list-clients", "-F", "#{client_name}")
+			if err != nil || clients == "" {
+				return fmt.Errorf("no tmux clients found")
+			}
+			// Use the first (most recent) client
+			client := clients[:strings.Index(clients+"\n", "\n")]
+			_, err = tmux.Run("switch-client", "-c", client, "-t", session)
+			return err
 		},
 	}
-	toggleCmd.Flags().IntP("width", "w", 30, "Sidebar width")
 
-	rootCmd.AddCommand(sidebarCmd, notifyCmd, clearCmd, statusCmd, toggleCmd)
+	rootCmd.AddCommand(popupCmd, toggleCmd, notifyCmd, clearCmd, statusCmd, switchCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-const sidebarTitle = "tw-sidebar"
-
-func toggleSidebar(width int) error {
-	// Look for sidebar in the current window
-	out, err := tmux.Run("list-panes", "-F", "#{pane_id}|#{pane_title}|#{pane_width}")
-	if err != nil {
-		return err
-	}
-
-	var largestPane string
-	var largestWidth int
-
-	for _, line := range strings.Split(out, "\n") {
-		parts := strings.SplitN(line, "|", 3)
-		if len(parts) != 3 {
-			continue
-		}
-		paneID, title := parts[0], parts[1]
-		if title == sidebarTitle {
-			return tmux.KillPane(paneID)
-		}
-		// Track largest pane to split from
-		w := 0
-		fmt.Sscanf(parts[2], "%d", &w)
-		if w > largestWidth {
-			largestWidth = w
-			largestPane = paneID
-		}
-	}
-
-	// No sidebar in this window — create one, splitting from the largest pane.
-	// The sidebar command sets its own pane title on startup.
-	args := []string{"-hb", "-l", fmt.Sprintf("%d", width)}
-	if largestPane != "" {
-		args = append(args, "-t", largestPane)
-	}
-	args = append(args, "tw", "sidebar")
-	return tmux.SplitWindow(args...)
+func togglePopup(width, height string) error {
+	// display-popup natively toggles: if a popup with the same -T title
+	// is already open, calling display-popup again closes it.
+	// This means prefix+b opens the popup, and prefix+b again closes it.
+	_, err := tmux.Run(
+		"display-popup",
+		"-E",
+		"-w", width,
+		"-h", height,
+		"-b", "rounded",
+		"-S", "fg=#555555",
+		"-T", " agents ",
+		"tw", "popup",
+	)
+	return err
 }

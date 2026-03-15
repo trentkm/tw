@@ -10,9 +10,16 @@ import (
 	"time"
 )
 
+type Status string
+
+const (
+	StatusWaiting Status = "waiting" // agent needs user attention
+	StatusDone    Status = "done"    // agent finished its task
+)
+
 type Notification struct {
 	Session   string
-	Message   string
+	Status    Status
 	Timestamp time.Time
 }
 
@@ -23,20 +30,43 @@ func stateDir() string {
 	return dir
 }
 
-func Add(session, message string) error {
+func Add(session string, status Status) error {
 	ts := time.Now().Unix()
-	data := fmt.Sprintf("%d|%s", ts, message)
+	data := fmt.Sprintf("%d|%s", ts, status)
 	path := filepath.Join(stateDir(), session+".notify")
 	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
 		return err
 	}
 
-	// Fire macOS notification in background
-	go func() {
-		exec.Command("osascript", "-e",
-			fmt.Sprintf(`display notification "%s" with title "%s" sound name "Glass"`, message, session),
+	// Fire macOS notification. Clicking it switches to the session.
+	var msg string
+	switch status {
+	case StatusWaiting:
+		msg = "Agent waiting for response"
+	case StatusDone:
+		msg = "Agent finished task"
+	}
+
+	// Prefer terminal-notifier (supports click-to-switch), fall back to osascript
+	// Use full paths since terminal-notifier runs outside the user's shell
+	tmuxPath, _ := exec.LookPath("tmux")
+	if tmuxPath == "" {
+		tmuxPath = "/opt/homebrew/bin/tmux"
+	}
+	switchCmd := fmt.Sprintf("%s switch-client -t %s", tmuxPath, session)
+	if path, err := exec.LookPath("terminal-notifier"); err == nil {
+		exec.Command(path,
+			"-title", session,
+			"-message", msg,
+			"-sound", "Glass",
+			"-execute", switchCmd,
+			"-group", "tw-"+session,
 		).Run()
-	}()
+	} else {
+		exec.Command("osascript", "-e",
+			fmt.Sprintf(`display notification "%s" with title "%s" sound name "Glass"`, msg, session),
+		).Run()
+	}
 
 	return nil
 }
@@ -54,29 +84,6 @@ func ClearAll() error {
 	return nil
 }
 
-func List() []Notification {
-	matches, _ := filepath.Glob(filepath.Join(stateDir(), "*.notify"))
-	var notifs []Notification
-	for _, f := range matches {
-		session := strings.TrimSuffix(filepath.Base(f), ".notify")
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		parts := strings.SplitN(strings.TrimSpace(string(data)), "|", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		ts, _ := strconv.ParseInt(parts[0], 10, 64)
-		notifs = append(notifs, Notification{
-			Session:   session,
-			Message:   parts[1],
-			Timestamp: time.Unix(ts, 0),
-		})
-	}
-	return notifs
-}
-
 func Get(session string) *Notification {
 	path := filepath.Join(stateDir(), session+".notify")
 	data, err := os.ReadFile(path)
@@ -90,7 +97,7 @@ func Get(session string) *Notification {
 	ts, _ := strconv.ParseInt(parts[0], 10, 64)
 	return &Notification{
 		Session:   session,
-		Message:   parts[1],
+		Status:    Status(parts[1]),
 		Timestamp: time.Unix(ts, 0),
 	}
 }
@@ -98,6 +105,22 @@ func Get(session string) *Notification {
 func Count() int {
 	matches, _ := filepath.Glob(filepath.Join(stateDir(), "*.notify"))
 	return len(matches)
+}
+
+func CountByStatus(status Status) int {
+	matches, _ := filepath.Glob(filepath.Join(stateDir(), "*.notify"))
+	count := 0
+	for _, f := range matches {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		parts := strings.SplitN(strings.TrimSpace(string(data)), "|", 2)
+		if len(parts) == 2 && Status(parts[1]) == status {
+			count++
+		}
+	}
+	return count
 }
 
 func (n *Notification) TimeAgo() string {

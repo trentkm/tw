@@ -170,3 +170,74 @@ func IsShell(cmd string) bool {
 	}
 	return false
 }
+
+// AgentStatus represents the state of an AI agent in a pane.
+type AgentStatus int
+
+const (
+	AgentNone    AgentStatus = iota // no agent detected
+	AgentWorking                    // agent is actively processing
+	AgentIdle                       // agent is idle, waiting for input
+)
+
+// knownAgents maps patterns (checked against pane title and command) to
+// friendly display names. Ordered so title matches are checked first.
+var knownAgents = []struct {
+	pattern string
+	name    string
+}{
+	// Title patterns (Claude Code is the only one that sets pane titles)
+	{"Claude Code", "claude"},
+	// Command patterns (binary names as they appear in pane_current_command)
+	{"codex", "codex"},
+	{"kiro-cli", "kiro"},
+	{"kiro", "kiro"},
+	{"aider", "aider"},
+	{"goose", "goose"},
+}
+
+// hasBrailleSpinner checks if a string contains braille spinner characters
+// (U+2800 block), used by Claude Code to indicate active processing.
+func hasBrailleSpinner(s string) bool {
+	for _, r := range s {
+		if r >= 0x2800 && r <= 0x28FF {
+			return true
+		}
+	}
+	return false
+}
+
+// DetectAgent checks a pane's title and command to determine if an AI agent
+// is running and whether it's actively working or idle.
+// Spinner-based working detection only works for agents that set pane titles
+// (currently only Claude Code). For others, we can detect presence but not
+// working vs idle.
+func DetectAgent(p Pane) (name string, status AgentStatus) {
+	for _, agent := range knownAgents {
+		if strings.Contains(p.Title, agent.pattern) || strings.Contains(p.Command, agent.pattern) {
+			if hasBrailleSpinner(p.Title) {
+				return agent.name, AgentWorking
+			}
+			return agent.name, AgentIdle
+		}
+	}
+	return "", AgentNone
+}
+
+// SessionAgentStatus returns the aggregate agent status for a session
+// by checking all panes. Working beats Idle.
+func SessionAgentStatus(windows []Window) (name string, status AgentStatus) {
+	for _, w := range windows {
+		for _, p := range w.Panes {
+			n, s := DetectAgent(p)
+			if s == AgentWorking {
+				return n, AgentWorking
+			}
+			if s == AgentIdle && status != AgentWorking {
+				name = n
+				status = s
+			}
+		}
+	}
+	return name, status
+}
