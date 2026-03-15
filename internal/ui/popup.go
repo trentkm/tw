@@ -11,8 +11,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/trent/tmux-workspace/internal/notify"
-	"github.com/trent/tmux-workspace/internal/tmux"
+	"github.com/trentkm/agmux/internal/notify"
+	"github.com/trentkm/agmux/internal/tmux"
 )
 
 // ── Palette ──────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ var (
 	colorText    = lipgloss.Color("#c0c0c0") // light gray
 	colorMuted   = lipgloss.Color("#585858") // dim gray
 	colorBright  = lipgloss.Color("#e4e4e4") // near white
-	colorWaiting = lipgloss.Color("#d7875f") // warm amber — attention
+	colorWaiting = lipgloss.Color("#e5a84b") // warm gold — attention
 	colorWorking = lipgloss.Color("#5f87af") // steel blue — in progress
 	colorDone    = lipgloss.Color("#5faf5f") // soft green — complete
 	colorSep     = lipgloss.Color("#3a3a3a") // subtle separator
@@ -94,7 +94,8 @@ type sessionEntry struct {
 
 type Model struct {
 	entries        []sessionEntry
-	cursor         int
+	filtered       []int // indices into entries matching search
+	cursor         int   // cursor into filtered list
 	currentSession string
 	viewport       viewport.Model
 	width          int
@@ -102,6 +103,8 @@ type Model struct {
 	ready          bool
 	cmdMode        bool
 	cmdBuf         string
+	searchMode     bool
+	searchBuf      string
 }
 
 type tickMsg time.Time
@@ -143,9 +146,29 @@ func (m *Model) loadSessions() {
 		entries = append(entries, entry)
 	}
 	m.entries = entries
+	m.applyFilter()
+}
 
-	if m.cursor >= len(m.entries) {
-		m.cursor = max(0, len(m.entries)-1)
+func (m *Model) applyFilter() {
+	if m.searchBuf == "" {
+		// No filter — show all
+		m.filtered = make([]int, len(m.entries))
+		for i := range m.entries {
+			m.filtered[i] = i
+		}
+	} else {
+		query := strings.ToLower(m.searchBuf)
+		m.filtered = nil
+		for i, e := range m.entries {
+			name := strings.ToLower(e.session.Name)
+			path := strings.ToLower(e.path)
+			if strings.Contains(name, query) || strings.Contains(path, query) {
+				m.filtered = append(m.filtered, i)
+			}
+		}
+	}
+	if m.cursor >= len(m.filtered) {
+		m.cursor = max(0, len(m.filtered)-1)
 	}
 }
 
@@ -202,6 +225,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case tea.KeyMsg:
+		// ── Command mode (:q) ──
 		if m.cmdMode {
 			switch msg.String() {
 			case "enter":
@@ -227,6 +251,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// ── Search mode (/) ──
+		if m.searchMode {
+			switch msg.String() {
+			case "enter":
+				// Confirm search — stay filtered, exit search mode
+				m.searchMode = false
+			case "esc":
+				// Cancel search — clear filter
+				m.searchMode = false
+				m.searchBuf = ""
+				m.applyFilter()
+				m.viewport.SetContent(m.renderSessions())
+			case "backspace":
+				if len(m.searchBuf) > 0 {
+					m.searchBuf = m.searchBuf[:len(m.searchBuf)-1]
+					m.applyFilter()
+					m.viewport.SetContent(m.renderSessions())
+				} else {
+					m.searchMode = false
+					m.applyFilter()
+					m.viewport.SetContent(m.renderSessions())
+				}
+			default:
+				ch := msg.String()
+				if len(ch) == 1 {
+					m.searchBuf += ch
+					m.applyFilter()
+					m.viewport.SetContent(m.renderSessions())
+				}
+			}
+			return m, nil
+		}
+
+		// ── Normal mode ──
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("q", "esc"))):
 			return m, tea.Quit
@@ -235,8 +293,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cmdMode = true
 			m.cmdBuf = ""
 
+		case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
+			m.searchMode = true
+			m.searchBuf = ""
+
 		case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
-			if m.cursor < len(m.entries)-1 {
+			if m.cursor < len(m.filtered)-1 {
 				m.cursor++
 				m.viewport.SetContent(m.renderSessions())
 				m.ensureCursorVisible()
@@ -250,7 +312,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("G"))):
-			m.cursor = len(m.entries) - 1
+			m.cursor = len(m.filtered) - 1
 			m.viewport.SetContent(m.renderSessions())
 			m.viewport.GotoBottom()
 
@@ -260,15 +322,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoTop()
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
-			if len(m.entries) > 0 {
-				selected := m.entries[m.cursor].session.Name
-				tmux.SwitchClient(selected)
+			if e := m.selectedEntry(); e != nil {
+				tmux.SwitchClient(e.session.Name)
 				return m, tea.Quit
 			}
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("c"))):
-			if len(m.entries) > 0 {
-				notify.Clear(m.entries[m.cursor].session.Name)
+			if e := m.selectedEntry(); e != nil {
+				notify.Clear(e.session.Name)
 				m.loadSessions()
 				m.viewport.SetContent(m.renderSessions())
 			}
@@ -302,11 +363,20 @@ func (m Model) renderFooter() string {
 	if m.cmdMode {
 		return " " + pathStyle.Render(":"+m.cmdBuf) + "█"
 	}
+	if m.searchMode {
+		return " " + footerKeyStyle.Render("/") + pathStyle.Render(m.searchBuf) + "█"
+	}
+	// Show active filter indicator
+	if m.searchBuf != "" {
+		filter := footerDescStyle.Render("filter: ") + footerKeyStyle.Render(m.searchBuf) + footerDescStyle.Render("  esc clear")
+		return " " + filter
+	}
 	keys := []struct{ key, desc string }{
 		{"j/k", "navigate"},
 		{"↵", "switch"},
+		{"/", "search"},
 		{"c", "clear"},
-		{"esc", "close"},
+		{"q", "close"},
 	}
 	var parts []string
 	for _, k := range keys {
@@ -336,13 +406,17 @@ func (m Model) renderSessions() string {
 	}
 
 	// ── Session entries ──
-	for idx, entry := range m.entries {
-		isCursor := idx == m.cursor
+	if len(m.filtered) == 0 && m.searchBuf != "" {
+		b.WriteString(emptyStyle.Render("\n  No matching sessions.\n"))
+	}
+	for fi, idx := range m.filtered {
+		entry := m.entries[idx]
+		isCursor := fi == m.cursor
 		isCurrent := entry.session.Name == m.currentSession
 
 		b.WriteString(m.renderEntry(entry, isCursor, isCurrent, w))
 
-		if idx < len(m.entries)-1 {
+		if fi < len(m.filtered)-1 {
 			b.WriteString("\n")
 		}
 	}
@@ -412,12 +486,9 @@ func (m Model) renderEntry(entry sessionEntry, isCursor, isCurrent bool, w int) 
 // ── Status badges ───────────────────────────────────────────────────
 
 func statusBadge(entry sessionEntry) string {
-	// Working overrides stale "done" — the agent started a new task
+	// Working always wins — if the agent has a spinner, you already
+	// responded to any "waiting" and any "done" is stale.
 	if entry.agentStatus == tmux.AgentWorking {
-		// But "waiting" still wins — agent needs your input
-		if entry.notif != nil && entry.notif.Status == notify.StatusWaiting {
-			return waitingStyle.Render("● waiting ") + pathStyle.Render(entry.notif.TimeAgo())
-		}
 		return workingStyle.Render("⟳ working")
 	}
 	if entry.notif != nil {
@@ -435,16 +506,15 @@ func statusBadge(entry sessionEntry) string {
 func (m Model) agentSummary() string {
 	var working, waiting, done int
 	for _, e := range m.entries {
-		isWorking := e.agentStatus == tmux.AgentWorking
-		hasNotif := e.notif != nil
-
-		switch {
-		case hasNotif && e.notif.Status == notify.StatusWaiting:
-			waiting++ // waiting always counts
-		case isWorking:
-			working++ // working overrides done
-		case hasNotif && e.notif.Status == notify.StatusDone:
-			done++
+		if e.agentStatus == tmux.AgentWorking {
+			working++ // spinner detected — overrides any notification
+		} else if e.notif != nil {
+			switch e.notif.Status {
+			case notify.StatusWaiting:
+				waiting++
+			case notify.StatusDone:
+				done++
+			}
 		}
 	}
 
@@ -505,10 +575,18 @@ func (m Model) contentWidth() int {
 	return w
 }
 
+// selectedEntry returns the entry under the cursor, or nil if nothing is selected.
+func (m Model) selectedEntry() *sessionEntry {
+	if m.cursor < 0 || m.cursor >= len(m.filtered) {
+		return nil
+	}
+	return &m.entries[m.filtered[m.cursor]]
+}
+
 func (m *Model) ensureCursorVisible() {
 	line := 0
-	for i := 0; i < m.cursor && i < len(m.entries); i++ {
-		line += m.entryHeight(m.entries[i])
+	for i := 0; i < m.cursor && i < len(m.filtered); i++ {
+		line += m.entryHeight(m.entries[m.filtered[i]])
 		line++ // blank separator
 	}
 

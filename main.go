@@ -7,19 +7,19 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"github.com/trent/tmux-workspace/internal/notify"
-	"github.com/trent/tmux-workspace/internal/tmux"
-	"github.com/trent/tmux-workspace/internal/ui"
+	"github.com/trentkm/agmux/internal/notify"
+	"github.com/trentkm/agmux/internal/tmux"
+	"github.com/trentkm/agmux/internal/ui"
 )
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "tw",
+		Use:   "agmux",
 		Short: "tmux workspace manager",
 		Long:  "A workspace manager for tmux with notifications and a visual sidebar.",
 	}
 
-	// tw popup — run the TUI directly (called by display-popup)
+	// agmux popup — run the TUI directly (called by display-popup)
 	popupCmd := &cobra.Command{
 		Use:    "popup",
 		Short:  "Open the workspace switcher TUI",
@@ -32,7 +32,7 @@ func main() {
 		},
 	}
 
-	// tw toggle — open or dismiss the popup
+	// agmux toggle — open or dismiss the popup
 	toggleCmd := &cobra.Command{
 		Use:   "toggle",
 		Short: "Toggle the workspace switcher popup",
@@ -45,7 +45,7 @@ func main() {
 	toggleCmd.Flags().StringP("width", "w", "45%", "Popup width (columns or percentage)")
 	toggleCmd.Flags().StringP("height", "H", "40%", "Popup height (rows or percentage)")
 
-	// tw notify --status waiting|done
+	// agmux notify --status waiting|done
 	notifyCmd := &cobra.Command{
 		Use:   "notify",
 		Short: "Send a notification for the current tmux session",
@@ -69,7 +69,7 @@ func main() {
 	notifyCmd.Flags().StringP("session", "s", "", "Session name (default: current tmux session)")
 	notifyCmd.Flags().String("status", "", "Notification status: waiting or done")
 
-	// tw clear
+	// agmux clear
 	clearCmd := &cobra.Command{
 		Use:   "clear [session]",
 		Short: "Clear notifications",
@@ -90,7 +90,7 @@ func main() {
 	}
 	clearCmd.Flags().BoolP("all", "a", false, "Clear all notifications")
 
-	// tw status
+	// agmux status
 	statusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Status bar widget (for tmux status-right)",
@@ -98,14 +98,14 @@ func main() {
 			waiting := notify.CountByStatus(notify.StatusWaiting)
 			done := notify.CountByStatus(notify.StatusDone)
 			if waiting > 0 {
-				fmt.Printf("#[fg=yellow,bold] ● %d agent waiting #[default]", waiting)
+				fmt.Printf("#[fg=#e5a84b,bold] ● %d agent waiting #[default]", waiting)
 			} else if done > 0 {
-				fmt.Printf("#[fg=green] ✓ %d agent done #[default]", done)
+				fmt.Printf("#[fg=#5faf5f] ✓ %d agent done #[default]", done)
 			}
 		},
 	}
 
-	// tw switch <session> — switch to a session (works from outside tmux)
+	// agmux switch <session> — switch to a session (works from outside tmux)
 	switchCmd := &cobra.Command{
 		Use:    "switch [session]",
 		Short:  "Switch to a tmux session",
@@ -144,7 +144,7 @@ func togglePopup(width, height string) error {
 		"-b", "rounded",
 		"-S", "fg=#c0c0c0",
 		"-T", " ⬡ agents ",
-		"tw", "popup",
+		"agmux", "popup",
 	)
 	return err
 }

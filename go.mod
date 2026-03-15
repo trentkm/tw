@@ -1,4 +1,4 @@
-module github.com/trent/tmux-workspace
+module github.com/trentkm/agmux
 
 go 1.25.6
 

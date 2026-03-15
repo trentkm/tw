@@ -25,7 +25,7 @@ type Notification struct {
 
 func stateDir() string {
 	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".local", "state", "tmux-workspace")
+	dir := filepath.Join(home, ".local", "state", "agmux")
 	os.MkdirAll(dir, 0755)
 	return dir
 }
@@ -60,7 +60,7 @@ func Add(session string, status Status) error {
 			"-message", msg,
 			"-sound", "Glass",
 			"-execute", switchCmd,
-			"-group", "tw-"+session,
+			"-group", "agmux-"+session,
 		).Run()
 	} else {
 		exec.Command("osascript", "-e",
