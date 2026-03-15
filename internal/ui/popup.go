@@ -173,23 +173,23 @@ func (m *Model) applyFilter() {
 }
 
 func classifyEntry(e *sessionEntry) {
-	if len(e.windows) != 1 {
-		e.simple = false
-		return
+	// Always set a path from the first window's active pane
+	if len(e.windows) > 0 {
+		e.path = tildefy(windowPath(e.windows[0]))
 	}
-	win := e.windows[0]
-	nonShell := 0
-	for _, p := range win.Panes {
-		if !tmux.IsShell(p.Command) {
-			nonShell++
+
+	// Count total agent panes across all windows
+	agentCount := 0
+	for _, w := range e.windows {
+		for _, p := range w.Panes {
+			if !tmux.IsShell(p.Command) {
+				agentCount++
+			}
 		}
 	}
-	if nonShell <= 1 {
-		e.simple = true
-		e.path = tildefy(windowPath(win))
-		return
-	}
-	e.simple = false
+
+	// Simple = no agents or just one agent (render as 2 lines max)
+	e.simple = agentCount <= 1
 }
 
 func (m Model) Init() tea.Cmd {
@@ -452,31 +452,62 @@ func (m Model) renderEntry(entry sessionEntry, isCursor, isCurrent bool, w int) 
 	b.WriteString(line1)
 	b.WriteString("\n")
 
-	// ── Line 2: path / tree info ──
-	if entry.simple {
-		detail := entry.path
-		if entry.agentStatus == tmux.AgentNone && len(entry.windows) == 1 {
-			for _, p := range entry.windows[0].Panes {
-				if !tmux.IsShell(p.Command) {
-					detail = entry.path + " · " + friendlyName(p)
-					break
-				}
+	// ── Detail lines: flat agent list with optional window tags ──
+	type agentPane struct {
+		pane   tmux.Pane
+		winIdx int
+	}
+	var allAgents []agentPane
+	windowsWithAgents := 0
+	for _, win := range entry.windows {
+		hasAgent := false
+		for _, p := range win.Panes {
+			if !tmux.IsShell(p.Command) {
+				allAgents = append(allAgents, agentPane{p, win.Index})
+				hasAgent = true
 			}
 		}
-		b.WriteString(pathStyle.Render("     " + detail))
+		if hasAgent {
+			windowsWithAgents++
+		}
+	}
+	showWindowTag := windowsWithAgents > 1
+
+	if len(allAgents) == 0 {
+		b.WriteString(pathStyle.Render("     " + entry.path))
+		b.WriteString("\n")
+	} else if len(allAgents) == 1 {
+		p := allAgents[0].pane
+		panePath := tildefy(p.Path)
+		_, paneStatus := tmux.DetectAgent(p)
+		var indicator string
+		switch paneStatus {
+		case tmux.AgentWorking:
+			indicator = workingStyle.Render("⟳ ") + pathStyle.Render(friendlyName(p))
+		default:
+			indicator = pathStyle.Render(friendlyName(p))
+		}
+		b.WriteString(pathStyle.Render("     "+panePath+"  ") + indicator)
 		b.WriteString("\n")
 	} else {
-		// Expanded tree for complex sessions
-		for _, win := range entry.windows {
-			winPath := windowPath(win)
-			b.WriteString(pathStyle.Render("     " + winPath))
-			b.WriteString("\n")
-
-			nonShellPanes := filterNonShell(win.Panes)
-			for _, pane := range nonShellPanes {
-				b.WriteString(pathStyle.Render("       └ " + friendlyName(pane)))
-				b.WriteString("\n")
+		for _, ap := range allAgents {
+			panePath := tildefy(ap.pane.Path)
+			_, paneStatus := tmux.DetectAgent(ap.pane)
+			var indicator string
+			switch paneStatus {
+			case tmux.AgentWorking:
+				indicator = workingStyle.Render("⟳") + pathStyle.Render(" "+friendlyName(ap.pane)+"  "+panePath)
+			case tmux.AgentIdle:
+				indicator = pathStyle.Render("· "+friendlyName(ap.pane)+"  "+panePath)
+			default:
+				indicator = pathStyle.Render("  "+friendlyName(ap.pane)+"  "+panePath)
 			}
+			winTag := ""
+			if showWindowTag {
+				winTag = pathStyle.Render(fmt.Sprintf("  w%d", ap.winIdx))
+			}
+			b.WriteString(pathStyle.Render("     └ ") + indicator + winTag)
+			b.WriteString("\n")
 		}
 	}
 
@@ -601,13 +632,15 @@ func (m *Model) ensureCursorVisible() {
 }
 
 func (m Model) entryHeight(e sessionEntry) int {
-	if e.simple {
-		return 2 // name + path
-	}
-	h := 1 // name line
+	h := 1 // session name line
+	totalAgents := 0
 	for _, w := range e.windows {
-		h++ // window path
-		h += len(filterNonShell(w.Panes))
+		totalAgents += len(filterNonShell(w.Panes))
+	}
+	if totalAgents <= 1 {
+		h++ // compact single line
+	} else {
+		h += totalAgents // one line per agent
 	}
 	return h
 }

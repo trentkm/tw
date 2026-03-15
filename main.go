@@ -95,13 +95,60 @@ func main() {
 		Use:   "status",
 		Short: "Status bar widget (for tmux status-right)",
 		Run: func(cmd *cobra.Command, args []string) {
-			waiting := notify.CountByStatus(notify.StatusWaiting)
-			done := notify.CountByStatus(notify.StatusDone)
-			if waiting > 0 {
-				fmt.Printf("#[fg=#e5a84b,bold] ● %d agent waiting #[default]", waiting)
-			} else if done > 0 {
-				fmt.Printf("#[fg=#5faf5f] ✓ %d agent done #[default]", done)
+			sessions, _ := tmux.ListSessions()
+
+			type agentInfo struct {
+				name   string
+				symbol string
+				color  string
 			}
+			var agents []agentInfo
+
+			var working, waiting, done int
+			for _, s := range sessions {
+				wins, _ := tmux.ListWindowsWithPanes(s.Name)
+				_, agentStatus := tmux.SessionAgentStatus(wins)
+				n := notify.Get(s.Name)
+
+				switch {
+				case agentStatus == tmux.AgentWorking:
+					working++
+					agents = append(agents, agentInfo{s.Name, "⟳", "#5f87af"})
+				case n != nil && n.Status == notify.StatusWaiting:
+					waiting++
+					agents = append(agents, agentInfo{s.Name, "●", "#e5a84b"})
+				case n != nil && n.Status == notify.StatusDone:
+					done++
+					agents = append(agents, agentInfo{s.Name, "✓", "#5faf5f"})
+				}
+			}
+
+			if len(agents) == 0 {
+				return
+			}
+
+			// Compact mode when >4 active agents
+			if len(agents) > 4 {
+				var parts []string
+				if working > 0 {
+					parts = append(parts, fmt.Sprintf("#[fg=#5f87af]%d⟳#[default]", working))
+				}
+				if waiting > 0 {
+					parts = append(parts, fmt.Sprintf("#[fg=#e5a84b,bold]%d●#[default]", waiting))
+				}
+				if done > 0 {
+					parts = append(parts, fmt.Sprintf("#[fg=#5faf5f]%d✓#[default]", done))
+				}
+				fmt.Print(" " + strings.Join(parts, " ") + " ")
+				return
+			}
+
+			// Named mode
+			var parts []string
+			for _, a := range agents {
+				parts = append(parts, fmt.Sprintf("#[fg=%s]%s%s#[default]", a.color, a.name, a.symbol))
+			}
+			fmt.Print(" " + strings.Join(parts, "  ") + " ")
 		},
 	}
 
@@ -133,9 +180,12 @@ func main() {
 }
 
 func togglePopup(width, height string) error {
-	// display-popup natively toggles: if a popup with the same -T title
-	// is already open, calling display-popup again closes it.
-	// This means prefix+b opens the popup, and prefix+b again closes it.
+	// Auto-size height to content, capped at 80% terminal height
+	autoHeight := calcPopupHeight()
+	if autoHeight > 0 {
+		height = fmt.Sprintf("%d", autoHeight)
+	}
+
 	_, err := tmux.Run(
 		"display-popup",
 		"-E",
@@ -147,4 +197,55 @@ func togglePopup(width, height string) error {
 		"agmux", "popup",
 	)
 	return err
+}
+
+func calcPopupHeight() int {
+	sessions, err := tmux.ListSessions()
+	if err != nil {
+		return 0
+	}
+
+	lines := 6 // summary + separator + footer + border chrome + padding
+	for _, s := range sessions {
+		wins, _ := tmux.ListWindowsWithPanes(s.Name)
+		lines++ // session name line
+
+		totalAgents := 0
+		windowsWithAgents := 0
+		for _, w := range wins {
+			n := 0
+			for _, p := range w.Panes {
+				if !tmux.IsShell(p.Command) {
+					n++
+				}
+			}
+			if n > 0 {
+				windowsWithAgents++
+				totalAgents += n
+			}
+		}
+
+		if totalAgents <= 1 {
+			lines++ // compact detail line
+		} else {
+			lines += totalAgents // flat list, one per agent
+		}
+
+		lines++ // blank separator between sessions
+	}
+
+	if lines < 8 {
+		lines = 8
+	}
+
+	// Cap at 80% of terminal
+	termHeight := 50
+	if out, err := tmux.Run("display-message", "-p", "#{window_height}"); err == nil {
+		fmt.Sscanf(out, "%d", &termHeight)
+	}
+	if maxH := termHeight * 80 / 100; lines > maxH {
+		lines = maxH
+	}
+
+	return lines
 }

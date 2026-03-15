@@ -99,7 +99,7 @@ func ListSessions() ([]Session, error) {
 
 // ListWindowsWithPanes returns all windows for a session, each with their panes.
 func ListWindowsWithPanes(session string) ([]Window, error) {
-	out, err := Run("list-panes", "-t", session, "-F",
+	out, err := Run("list-panes", "-s", "-t", session, "-F",
 		"#{window_index}|#{window_name}|#{window_active}|#{pane_index}|#{pane_current_command}|#{pane_current_path}|#{pane_title}|#{pane_active}")
 	if err != nil {
 		return nil, err
