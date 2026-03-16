@@ -536,17 +536,15 @@ func (m Model) renderPaneDetail(p tmux.Pane, entry sessionEntry, showConnector b
 	var indicator string
 	frame := pulseFrames[m.animFrame%len(pulseFrames)]
 
+	// Pane-level: use spinner detection only (not session notification)
+	// Session notification (working/waiting/done) shows on the session badge
 	switch {
 	case paneStatus == tmux.AgentWorking:
 		indicator = workingStyle.Render(frame) + pathStyle.Render(" "+agentName+"  "+panePath)
-	case entry.notif != nil && entry.notif.Status == notify.StatusWaiting:
-		indicator = waitingStyle.Render("●") + pathStyle.Render(" "+agentName+"  "+panePath)
-	case entry.notif != nil && entry.notif.Status == notify.StatusDone:
-		indicator = doneStyle.Render("·") + pathStyle.Render(" "+agentName+"  "+panePath)
 	case paneStatus == tmux.AgentIdle:
 		indicator = pathStyle.Render("· "+agentName+"  "+panePath)
 	default:
-		indicator = pathStyle.Render("  "+agentName+"  "+panePath)
+		indicator = pathStyle.Render("· "+agentName+"  "+panePath)
 	}
 
 	return pathStyle.Render(prefix) + indicator + pathStyle.Render(winTag)
@@ -568,12 +566,15 @@ func (m Model) padWithBg(content string, w int, bg lipgloss.Color) string {
 // ── Status badges ───────────────────────────────────────────────────
 
 func (m Model) statusBadge(entry sessionEntry) string {
+	// Spinner detection overrides everything
 	if entry.agentStatus == tmux.AgentWorking {
 		return workingStyle.Render("⟳ working")
 	}
 	if entry.notif != nil {
 		ago := entry.notif.TimeAgo()
 		switch entry.notif.Status {
+		case notify.StatusWorking:
+			return workingStyle.Render("⟳ working")
 		case notify.StatusWaiting:
 			return waitingStyle.Render("● waiting ") + pathStyle.Render(ago)
 		case notify.StatusDone:
@@ -587,9 +588,11 @@ func (m Model) agentSummary() string {
 	var working, waiting, done int
 	for _, e := range m.entries {
 		if e.agentStatus == tmux.AgentWorking {
-			working++ // spinner detected — overrides any notification
+			working++
 		} else if e.notif != nil {
 			switch e.notif.Status {
+			case notify.StatusWorking:
+				working++
 			case notify.StatusWaiting:
 				waiting++
 			case notify.StatusDone:
@@ -641,6 +644,16 @@ func windowPath(w tmux.Window) string {
 func friendlyName(p tmux.Pane) string {
 	if strings.Contains(p.Title, "Claude Code") {
 		return "claude"
+	}
+	switch p.Command {
+	case "kiro-cli", "kiro":
+		return "kiro"
+	case "codex":
+		return "codex"
+	case "aider":
+		return "aider"
+	case "goose":
+		return "goose"
 	}
 	return p.Command
 }

@@ -60,10 +60,10 @@ func main() {
 			}
 			status, _ := cmd.Flags().GetString("status")
 			switch status {
-			case "waiting", "done":
+			case "working", "waiting", "done":
 				return notify.Add(session, notify.Status(status))
 			default:
-				return fmt.Errorf("--status must be 'waiting' or 'done'")
+				return fmt.Errorf("--status must be 'working', 'waiting', or 'done'")
 			}
 		},
 	}
@@ -117,6 +117,9 @@ func main() {
 
 				switch {
 				case agentStatus == tmux.AgentWorking:
+					working++
+					agents = append(agents, agentInfo{s.Name, workSym, "#5f87af"})
+				case n != nil && n.Status == notify.StatusWorking:
 					working++
 					agents = append(agents, agentInfo{s.Name, workSym, "#5f87af"})
 				case n != nil && n.Status == notify.StatusWaiting:

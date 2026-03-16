@@ -54,6 +54,17 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agmux notify --status working",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "permission_prompt",
@@ -81,14 +92,30 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
+- **`UserPromptSubmit`** — fires when you send a prompt. Shows "working" status.
 - **`Notification` (permission_prompt)** — fires when Claude is blocked on a permission prompt. Shows "waiting" status.
 - **`Stop`** — fires when Claude finishes its response. Shows "done" status.
+
+#### Kiro CLI
+
+Add hooks to your Kiro agent configuration:
+
+```yaml
+hooks:
+  - event: UserPromptSubmit
+    command: agmux notify --status working
+  - event: Stop
+    command: agmux notify --status done
+```
 
 #### Other agents
 
 Any agent that can run shell commands on lifecycle events can integrate with agmux:
 
 ```bash
+# When agent starts processing:
+agmux notify --status working
+
 # When agent needs user input:
 agmux notify --status waiting
 
@@ -115,6 +142,7 @@ Without it, agmux falls back to basic macOS notifications via osascript (no clic
 |---------|-------------|
 | `agmux toggle` | Open/close the agent popup |
 | `agmux status` | Status bar widget (for tmux status-right) |
+| `agmux notify --status working` | Mark session as agent working |
 | `agmux notify --status waiting` | Mark session as waiting for input |
 | `agmux notify --status done` | Mark session as task complete |
 | `agmux clear [session]` | Clear notification for a session |

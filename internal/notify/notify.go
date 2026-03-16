@@ -13,6 +13,7 @@ import (
 type Status string
 
 const (
+	StatusWorking Status = "working" // agent is actively processing
 	StatusWaiting Status = "waiting" // agent needs user attention
 	StatusDone    Status = "done"    // agent finished its task
 )
@@ -38,13 +39,15 @@ func Add(session string, status Status) error {
 		return err
 	}
 
-	// Fire macOS notification. Clicking it switches to the session.
+	// Fire macOS notification for waiting/done only (not working — too noisy)
 	var msg string
 	switch status {
 	case StatusWaiting:
 		msg = "Agent waiting for response"
 	case StatusDone:
 		msg = "Agent finished task"
+	case StatusWorking:
+		return nil // no notification, just update state file
 	}
 
 	// Prefer terminal-notifier (supports click-to-switch), fall back to osascript
