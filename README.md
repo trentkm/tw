@@ -7,8 +7,7 @@ Works with Claude Code, Codex, Kiro, Aider, Goose, or any CLI agent.
 ## Install
 
 ```bash
-brew tap trentkm/tap
-brew install agmux
+brew install trentkm/tap/agmux
 ```
 
 Or build from source:
