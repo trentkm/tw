@@ -629,19 +629,19 @@ func (m Model) renderPaneDetail(p tmux.Pane, entry *sessionEntry, showConnector 
 	var indicator string
 	frame := pulseFrames[m.animFrame%len(pulseFrames)]
 
-	// Pane-level: spinner detection for working, notification for waiting/done
+	// Pane-level: spinner for working pane, green dot for idle agents
 	switch {
 	case paneStatus == tmux.AgentWorking:
 		indicator = workingStyle.Render(frame) + pathStyle.Render(" "+agentName+"  "+panePath)
-	case entry.notif != nil && entry.notif.Status == notify.StatusWorking:
-		// Session is "working" but we don't know which pane — show neutral dot
-		indicator = pathStyle.Render("· "+agentName+"  "+panePath)
 	case entry.notif != nil && entry.notif.Status == notify.StatusWaiting:
 		indicator = waitingStyle.Render("●") + pathStyle.Render(" "+agentName+"  "+panePath)
-	case entry.notif != nil && entry.notif.Status == notify.StatusDone:
-		indicator = doneStyle.Render("·") + pathStyle.Render(" "+agentName+"  "+panePath)
 	default:
-		indicator = pathStyle.Render("· "+agentName+"  "+panePath)
+		// Idle or done — green dot for detected agents, gray for unknown
+		if agentName != "" {
+			indicator = doneStyle.Render("·") + pathStyle.Render(" "+agentName+"  "+panePath)
+		} else {
+			indicator = pathStyle.Render("· "+agentName+"  "+panePath)
+		}
 	}
 
 	return pathStyle.Render(prefix) + indicator + pathStyle.Render(winTag)
