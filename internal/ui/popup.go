@@ -105,6 +105,8 @@ type Model struct {
 	cmdBuf         string
 	searchMode     bool
 	searchBuf      string
+	newMode        bool   // typing a new session name
+	newBuf         string
 	animFrame      int // animation frame counter
 }
 
@@ -302,6 +304,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// ── New session mode (n) ──
+		if m.newMode {
+			switch msg.String() {
+			case "enter":
+				name := m.newBuf
+				m.newMode = false
+				m.newBuf = ""
+				if name != "" {
+					tmux.Run("new-session", "-d", "-s", name)
+					tmux.SwitchClient(name)
+					return m, tea.Quit
+				}
+			case "esc":
+				m.newMode = false
+				m.newBuf = ""
+			case "backspace":
+				if len(m.newBuf) > 0 {
+					m.newBuf = m.newBuf[:len(m.newBuf)-1]
+				} else {
+					m.newMode = false
+				}
+			default:
+				ch := msg.String()
+				if len(ch) == 1 {
+					m.newBuf += ch
+				}
+			}
+			return m, nil
+		}
+
 		// ── Normal mode ──
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("q", "esc"))):
@@ -314,6 +346,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
 			m.searchMode = true
 			m.searchBuf = ""
+
+		case key.Matches(msg, key.NewBinding(key.WithKeys("n"))):
+			m.newMode = true
+			m.newBuf = ""
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("j", "down"))):
 			if m.cursor < len(m.filtered)-1 {
@@ -384,6 +420,9 @@ func (m Model) renderFooter() string {
 	if m.searchMode {
 		return " " + footerKeyStyle.Render("/") + pathStyle.Render(m.searchBuf) + "█"
 	}
+	if m.newMode {
+		return " " + footerKeyStyle.Render("new: ") + pathStyle.Render(m.newBuf) + "█"
+	}
 	// Show active filter indicator
 	if m.searchBuf != "" {
 		filter := footerDescStyle.Render("filter: ") + footerKeyStyle.Render(m.searchBuf) + footerDescStyle.Render("  esc clear")
@@ -393,6 +432,7 @@ func (m Model) renderFooter() string {
 		{"j/k", "navigate"},
 		{"↵", "switch"},
 		{"/", "search"},
+		{"n", "new"},
 		{"c", "clear"},
 		{"q", "close"},
 	}
