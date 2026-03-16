@@ -629,12 +629,13 @@ func (m Model) renderPaneDetail(p tmux.Pane, entry *sessionEntry, showConnector 
 	var indicator string
 	frame := pulseFrames[m.animFrame%len(pulseFrames)]
 
-	// Determine effective status: live spinner detection first, then notify state
+	// Pane-level: spinner detection for working, notification for waiting/done
 	switch {
 	case paneStatus == tmux.AgentWorking:
 		indicator = workingStyle.Render(frame) + pathStyle.Render(" "+agentName+"  "+panePath)
 	case entry.notif != nil && entry.notif.Status == notify.StatusWorking:
-		indicator = workingStyle.Render(frame) + pathStyle.Render(" "+agentName+"  "+panePath)
+		// Session is "working" but we don't know which pane — show neutral dot
+		indicator = pathStyle.Render("· "+agentName+"  "+panePath)
 	case entry.notif != nil && entry.notif.Status == notify.StatusWaiting:
 		indicator = waitingStyle.Render("●") + pathStyle.Render(" "+agentName+"  "+panePath)
 	case entry.notif != nil && entry.notif.Status == notify.StatusDone:
@@ -811,7 +812,7 @@ func (m Model) entryHeight(e *sessionEntry) int {
 	totalAgents := 0
 	for _, w := range e.windows {
 		for _, p := range w.Panes {
-			if name, _ := tmux.DetectAgent(p); name != "" {
+			if name, _ := e.detectPane(p); name != "" {
 				totalAgents++
 			}
 		}
