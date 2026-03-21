@@ -266,7 +266,7 @@ func DetectAgent(p Pane) (name string, status AgentStatus) {
 	}
 	// If the pane looks like a shell, check if an agent is hiding in the
 	// process tree (e.g. kiro-cli spawns fish as its terminal layer).
-	if p.Pid > 0 && IsShell(p.Command) {
+	if p.Pid > 0 {
 		if agent := detectAgentInProcessTree(p.Pid); agent != "" {
 			return agent, AgentIdle
 		}
