@@ -16,16 +16,86 @@ import (
 )
 
 // ── Palette ──────────────────────────────────────────────────────────
+
+type palette struct {
+	accent      lipgloss.Color
+	text        lipgloss.Color
+	muted       lipgloss.Color
+	bright      lipgloss.Color
+	waiting     lipgloss.Color
+	working     lipgloss.Color
+	done        lipgloss.Color
+	sep         lipgloss.Color
+	highlightBg lipgloss.Color
+	highlightRe string // ANSI escape for background in padWithBg
+}
+
+var darkPalette = palette{
+	accent:      lipgloss.Color("#5f87d7"),
+	text:        lipgloss.Color("#c0c0c0"),
+	muted:       lipgloss.Color("#585858"),
+	bright:      lipgloss.Color("#e4e4e4"),
+	waiting:     lipgloss.Color("#e5a84b"),
+	working:     lipgloss.Color("#5f87af"),
+	done:        lipgloss.Color("#5faf5f"),
+	sep:         lipgloss.Color("#3a3a3a"),
+	highlightBg: lipgloss.Color("#333333"),
+	highlightRe: "\x1b[48;2;51;51;51m",
+}
+
+var lightPalette = palette{
+	accent:      lipgloss.Color("#5f87d7"),
+	text:        lipgloss.Color("#5C6A72"),
+	muted:       lipgloss.Color("#939F91"),
+	bright:      lipgloss.Color("#3C474D"),
+	waiting:     lipgloss.Color("#DFA000"),
+	working:     lipgloss.Color("#3A94C5"),
+	done:        lipgloss.Color("#35A77C"),
+	sep:         lipgloss.Color("#D5C9A1"),
+	highlightBg: lipgloss.Color("#E6E2CC"),
+	highlightRe: "\x1b[48;2;230;226;204m",
+}
+
+func isLightTerminal() bool {
+	v := os.Getenv("AGMUX_THEME")
+	if v == "light" {
+		return true
+	}
+	if v == "dark" {
+		return false
+	}
+	return !lipgloss.DefaultRenderer().HasDarkBackground()
+}
+
+var pal palette
+
 var (
-	colorAccent  = lipgloss.Color("#5f87d7") // soft blue
-	colorText    = lipgloss.Color("#c0c0c0") // light gray
-	colorMuted   = lipgloss.Color("#585858") // dim gray
-	colorBright  = lipgloss.Color("#e4e4e4") // near white
-	colorWaiting = lipgloss.Color("#e5a84b") // warm gold — attention
-	colorWorking = lipgloss.Color("#5f87af") // steel blue — in progress
-	colorDone    = lipgloss.Color("#5faf5f") // soft green — complete
-	colorSep     = lipgloss.Color("#3a3a3a") // subtle separator
+	colorAccent  lipgloss.Color
+	colorText    lipgloss.Color
+	colorMuted   lipgloss.Color
+	colorBright  lipgloss.Color
+	colorWaiting lipgloss.Color
+	colorWorking lipgloss.Color
+	colorDone    lipgloss.Color
+	colorSep     lipgloss.Color
 )
+
+func init() {
+	if isLightTerminal() {
+		pal = lightPalette
+	} else {
+		pal = darkPalette
+	}
+	colorAccent = pal.accent
+	colorText = pal.text
+	colorMuted = pal.muted
+	colorBright = pal.bright
+	colorWaiting = pal.waiting
+	colorWorking = pal.working
+	colorDone = pal.done
+	colorSep = pal.sep
+	initStyles()
+}
 
 // ── Styles ───────────────────────────────────────────────────────────
 var (
@@ -536,7 +606,7 @@ func (m Model) renderSessions() string {
 }
 
 func (m Model) renderEntry(entry *sessionEntry, isCursor, isCurrent bool, w int) string {
-	highlightBg := lipgloss.Color("#333333")
+	highlightBg := pal.highlightBg
 
 	name := entry.session.Name
 	badge := m.statusBadge(*entry)
@@ -662,7 +732,7 @@ func (m Model) padWithBg(content string, w int, bg lipgloss.Color) string {
 	}
 	// Replace every \x1b[0m (reset) with \x1b[0m\x1b[48;2;51;51;51m (reset then re-apply bg)
 	// This keeps the background alive through inner style resets
-	bgOn := "\x1b[48;2;51;51;51m"
+	bgOn := pal.highlightRe
 	patched := strings.ReplaceAll(content, "\x1b[0m", "\x1b[0m"+bgOn)
 	return bgOn + patched + strings.Repeat(" ", padding) + "\x1b[0m"
 }

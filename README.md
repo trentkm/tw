@@ -168,6 +168,23 @@ brew install terminal-notifier
 
 Without it, agmux falls back to basic macOS notifications via osascript (no click-to-switch).
 
+### 4. Light theme (optional)
+
+If you use a light terminal theme, set the `AGMUX_THEME` environment variable:
+
+```bash
+# In your shell config (e.g. ~/.config/fish/config.fish, ~/.zshrc)
+export AGMUX_THEME=light
+```
+
+For tmux, also set it in your `~/.tmux.conf` so popups pick it up:
+
+```bash
+set-environment -g AGMUX_THEME light
+```
+
+Without this, agmux uses the dark palette by default. Auto-detection via terminal background query doesn't work inside tmux.
+
 ## Usage
 
 | Command | Description |

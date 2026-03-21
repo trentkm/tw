@@ -11,38 +11,36 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ── Init wizard styles ──────────────────────────────────────────────
+// ── Init wizard styles (resolved at render time via palette) ────────
 
 var (
-	initTitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#e4e4e4")).
-			Bold(true)
+	initTitleStyle = lipgloss.NewStyle().Bold(true)
 
-	initDescStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#585858"))
+	initDescStyle = lipgloss.NewStyle()
 
-	initCheckStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#5faf5f")).
-			Bold(true)
+	initCheckStyle = lipgloss.NewStyle().Bold(true)
 
-	initUncheckStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#585858"))
+	initUncheckStyle = lipgloss.NewStyle()
 
-	initCursorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#e4e4e4")).
-			Bold(true)
+	initCursorStyle = lipgloss.NewStyle().Bold(true)
 
-	initHeaderStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#5f87d7")).
-			Bold(true)
+	initHeaderStyle = lipgloss.NewStyle().Bold(true)
 
-	initCodeStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#c0c0c0"))
+	initCodeStyle = lipgloss.NewStyle()
 
-	initSuccessStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#5faf5f")).
-				Bold(true)
+	initSuccessStyle = lipgloss.NewStyle().Bold(true)
 )
+
+func initStyles() {
+	initTitleStyle = initTitleStyle.Foreground(colorBright)
+	initDescStyle = initDescStyle.Foreground(colorMuted)
+	initCheckStyle = initCheckStyle.Foreground(colorDone)
+	initUncheckStyle = initUncheckStyle.Foreground(colorMuted)
+	initCursorStyle = initCursorStyle.Foreground(colorBright)
+	initHeaderStyle = initHeaderStyle.Foreground(colorAccent)
+	initCodeStyle = initCodeStyle.Foreground(colorText)
+	initSuccessStyle = initSuccessStyle.Foreground(colorDone)
+}
 
 type agent struct {
 	name     string
