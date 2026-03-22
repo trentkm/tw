@@ -94,60 +94,40 @@ func init() {
 	colorWorking = pal.working
 	colorDone = pal.done
 	colorSep = pal.sep
+
+	// Initialize styles after palette is set
+	sessionStyle = lipgloss.NewStyle().Foreground(colorBright).Bold(true)
+	sessionDimStyle = lipgloss.NewStyle().Foreground(colorText)
+	currentMarkerStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	cursorBarStyle = lipgloss.NewStyle().Foreground(colorBright).Bold(true)
+	pathStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	waitingStyle = lipgloss.NewStyle().Foreground(colorWaiting).Bold(true)
+	workingStyle = lipgloss.NewStyle().Foreground(colorWorking)
+	doneStyle = lipgloss.NewStyle().Foreground(colorDone)
+	summaryStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	footerKeyStyle = lipgloss.NewStyle().Foreground(colorAccent)
+	footerDescStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	sepStyle = lipgloss.NewStyle().Foreground(colorSep)
+	emptyStyle = lipgloss.NewStyle().Foreground(colorMuted)
+
 	initStyles()
 }
 
 // ── Styles ───────────────────────────────────────────────────────────
 var (
-	// Session name styles
-	sessionStyle = lipgloss.NewStyle().
-			Foreground(colorBright).
-			Bold(true)
-
-	sessionDimStyle = lipgloss.NewStyle().
-			Foreground(colorText)
-
-	currentMarkerStyle = lipgloss.NewStyle().
-				Foreground(colorAccent).
-				Bold(true)
-
-	// Cursor marker
-	cursorBarStyle = lipgloss.NewStyle().
-			Foreground(colorBright).
-			Bold(true)
-
-	// Detail text (paths, tree)
-	pathStyle = lipgloss.NewStyle().
-			Foreground(colorMuted)
-
-	// Status badges
-	waitingStyle = lipgloss.NewStyle().
-			Foreground(colorWaiting).
-			Bold(true)
-
-	workingStyle = lipgloss.NewStyle().
-			Foreground(colorWorking)
-
-	doneStyle = lipgloss.NewStyle().
-			Foreground(colorDone)
-
-	// Summary header
-	summaryStyle = lipgloss.NewStyle().
-			Foreground(colorMuted)
-
-	// Footer
-	footerKeyStyle = lipgloss.NewStyle().
-			Foreground(colorAccent)
-
-	footerDescStyle = lipgloss.NewStyle().
-			Foreground(colorMuted)
-
-	// Separators
-	sepStyle = lipgloss.NewStyle().
-			Foreground(colorSep)
-
-	emptyStyle = lipgloss.NewStyle().
-			Foreground(colorMuted)
+	sessionStyle       lipgloss.Style
+	sessionDimStyle    lipgloss.Style
+	currentMarkerStyle lipgloss.Style
+	cursorBarStyle     lipgloss.Style
+	pathStyle          lipgloss.Style
+	waitingStyle       lipgloss.Style
+	workingStyle       lipgloss.Style
+	doneStyle          lipgloss.Style
+	summaryStyle       lipgloss.Style
+	footerKeyStyle     lipgloss.Style
+	footerDescStyle    lipgloss.Style
+	sepStyle           lipgloss.Style
+	emptyStyle         lipgloss.Style
 )
 
 // ── Model ────────────────────────────────────────────────────────────

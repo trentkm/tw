@@ -213,17 +213,23 @@ func togglePopup(width, height string) error {
 		height = fmt.Sprintf("%d", autoHeight)
 	}
 
+	borderStyle := "fg=#c0c0c0"
+	theme := os.Getenv("AGMUX_THEME")
+	if theme == "light" {
+		borderStyle = "fg=#5C6A72"
+	}
+
 	args := []string{
 		"display-popup",
 		"-E",
 		"-w", width,
 		"-h", height,
 		"-b", "rounded",
-		"-S", "fg=#c0c0c0",
+		"-S", borderStyle,
 		"-T", " ⬡ agents ",
 	}
-	if v := os.Getenv("AGMUX_THEME"); v != "" {
-		args = append(args, "-e", "AGMUX_THEME="+v)
+	if theme != "" {
+		args = append(args, "-e", "AGMUX_THEME="+theme)
 	}
 	args = append(args, "agmux", "popup")
 
