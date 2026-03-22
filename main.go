@@ -213,7 +213,7 @@ func togglePopup(width, height string) error {
 		height = fmt.Sprintf("%d", autoHeight)
 	}
 
-	_, err := tmux.Run(
+	args := []string{
 		"display-popup",
 		"-E",
 		"-w", width,
@@ -221,8 +221,13 @@ func togglePopup(width, height string) error {
 		"-b", "rounded",
 		"-S", "fg=#c0c0c0",
 		"-T", " ⬡ agents ",
-		"agmux", "popup",
-	)
+	}
+	if v := os.Getenv("AGMUX_THEME"); v != "" {
+		args = append(args, "-e", "AGMUX_THEME="+v)
+	}
+	args = append(args, "agmux", "popup")
+
+	_, err := tmux.Run(args...)
 	if err != nil {
 		// Fallback: run the TUI inline when display-popup fails
 		// (e.g. iTerm2 tmux integration, no client context)
