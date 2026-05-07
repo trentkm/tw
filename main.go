@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+	"github.com/trentkm/agmux/internal/gateway"
 	"github.com/trentkm/agmux/internal/notify"
 	"github.com/trentkm/agmux/internal/tmux"
 	"github.com/trentkm/agmux/internal/ui"
@@ -199,7 +203,28 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(popupCmd, toggleCmd, notifyCmd, clearCmd, statusCmd, switchCmd, initCmd)
+	// agmux gateway — Slack-to-tmux bridge
+	gatewayCmd := &cobra.Command{
+		Use:   "gateway",
+		Short: "Start the Slack-to-tmux gateway bot",
+		Long:  "Bridges Slack DMs to tmux agent sessions. Messages are sent via send-keys, responses captured via capture-pane.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := gateway.LoadConfig()
+			if err != nil {
+				return fmt.Errorf("gateway config: %w", err)
+			}
+
+			logger := log.New(os.Stderr, "gateway: ", log.LstdFlags|log.Lmsgprefix)
+			gw := gateway.New(cfg, logger)
+
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer cancel()
+
+			return gw.Run(ctx)
+		},
+	}
+
+	rootCmd.AddCommand(popupCmd, toggleCmd, notifyCmd, clearCmd, statusCmd, switchCmd, initCmd, gatewayCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
